@@ -2,7 +2,7 @@
 set -e
 
 # ==========================================
-# Konoha Kernel Build Script
+# ArifGans Kernel Build Script
 # Usage: ./build.sh [key=value ...]
 #   hz=100|250|1000       Timer frequency (default: 250)
 #   hardened=on|off       CPU mitigations (default: off)
@@ -567,6 +567,107 @@ DEBUG_REDUCTION_ARGS=(
 )
 scripts/config --file "$OUT_DIR/.config" "${DEBUG_REDUCTION_ARGS[@]}"
 
+# ==========================================
+# NetHunter (Kali) feature set
+# ==========================================
+# kABI-safe set: only enables features that are either built-in or =m and
+# do NOT alter any symbol exported in android/abi_gki_aarch64_qcom.
+# Adds: HID/RNDIS USB gadget, USB-serial adapters (PL2303, CH341, FTDI),
+# Bluetooth external adapters, nftables, netlink/packet diag, bridge nf,
+# eBPF tools, common forensics/pentest userspace requirements.
+echo "=========================================="
+echo "[+] Applying NetHunter (Kali) feature set..."
+echo "=========================================="
+NETHUNTER_ARGS=(
+    # USB gadget (rubber-ducky / BadUSB / mass-storage attack / Windows tethering)
+    -e CONFIG_USB_CONFIGFS_F_HID
+    -e CONFIG_USB_CONFIGFS_RNDIS
+    -e CONFIG_USB_CONFIGFS_ECM_SUBSET
+    -e CONFIG_USB_CONFIGFS_MASS_STORAGE
+    -e CONFIG_USB_CONFIGFS_F_FS
+    # USB-Serial bridges (HC-05, GPS, microcontrollers, etc.)
+    -m CONFIG_USB_ACM
+    -m CONFIG_USB_SERIAL
+    -e CONFIG_USB_SERIAL_GENERIC
+    -m CONFIG_USB_SERIAL_PL2303
+    -m CONFIG_USB_SERIAL_CH341
+    -m CONFIG_USB_SERIAL_FTDI_SIO
+    -m CONFIG_USB_SERIAL_CP210X
+    -m CONFIG_USB_SERIAL_OPTION
+    # External Bluetooth adapters
+    -m CONFIG_BT_HCIBTUSB
+    -m CONFIG_BT_HCIUART
+    # Mobile-broadband / external modems
+    -m CONFIG_USB_HSO
+    # Diagnostics / sockstat / ss / tcpdump
+    -e CONFIG_NETLINK_DIAG
+    -e CONFIG_PACKET_DIAG
+    -e CONFIG_INET_DIAG
+    -e CONFIG_INET_UDP_DIAG
+    -e CONFIG_INET_RAW_DIAG
+    -e CONFIG_UNIX_DIAG
+    # Netfilter / nftables (modern firewall ruleset)
+    -e CONFIG_NF_TABLES
+    -e CONFIG_NF_TABLES_INET
+    -e CONFIG_NF_TABLES_NETDEV
+    -e CONFIG_NFT_COMPAT
+    -e CONFIG_NFT_CT
+    -e CONFIG_NFT_NAT
+    -e CONFIG_NFT_MASQ
+    -e CONFIG_NFT_REDIR
+    -e CONFIG_NFT_REJECT
+    -e CONFIG_NFT_LOG
+    -e CONFIG_NFT_LIMIT
+    -e CONFIG_NFT_HASH
+    -e CONFIG_NFT_FIB
+    -e CONFIG_NFT_FIB_INET
+    -e CONFIG_NFT_TPROXY
+    -e CONFIG_NFT_SOCKET
+    -e CONFIG_NFT_XFRM
+    -e CONFIG_NFT_SYNPROXY
+    # Bridge netfilter / ebtables (MITM, arp spoofing)
+    -m CONFIG_BRIDGE_NETFILTER
+    -m CONFIG_NF_CONNTRACK_BRIDGE
+    -m CONFIG_BRIDGE_NF_EBTABLES
+    -m CONFIG_BRIDGE_EBT_BROUTE
+    -m CONFIG_BRIDGE_EBT_T_FILTER
+    -m CONFIG_BRIDGE_EBT_T_NAT
+    -m CONFIG_BRIDGE_EBT_802_3
+    -m CONFIG_BRIDGE_EBT_AMONG
+    -m CONFIG_BRIDGE_EBT_ARP
+    -m CONFIG_BRIDGE_EBT_IP
+    -m CONFIG_BRIDGE_EBT_IP6
+    -m CONFIG_BRIDGE_EBT_LIMIT
+    -m CONFIG_BRIDGE_EBT_MARK
+    -m CONFIG_BRIDGE_EBT_PKTTYPE
+    -m CONFIG_BRIDGE_EBT_STP
+    -m CONFIG_BRIDGE_EBT_VLAN
+    -m CONFIG_BRIDGE_EBT_ARPREPLY
+    -m CONFIG_BRIDGE_EBT_DNAT
+    -m CONFIG_BRIDGE_EBT_MARK_T
+    -m CONFIG_BRIDGE_EBT_REDIRECT
+    -m CONFIG_BRIDGE_EBT_SNAT
+    -m CONFIG_BRIDGE_EBT_LOG
+    -m CONFIG_BRIDGE_EBT_NFLOG
+    # Misc pentest / namespacing
+    -e CONFIG_VETH
+    -e CONFIG_USER_NS
+    -e CONFIG_NETFILTER_XT_TARGET_LOG
+    -e CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
+    -e CONFIG_NETFILTER_XT_MATCH_DCCP
+    -e CONFIG_NETFILTER_XT_MATCH_SCTP
+    -e CONFIG_NETFILTER_XT_MATCH_CGROUP
+    -e CONFIG_NETFILTER_XT_MATCH_CONNLABEL
+    -e CONFIG_NETFILTER_XT_MATCH_RECENT
+    -e CONFIG_NETFILTER_XT_MATCH_STATISTIC
+    -e CONFIG_NETFILTER_XT_MATCH_STRING
+    -e CONFIG_NETFILTER_XT_MATCH_TIME
+    -e CONFIG_NETFILTER_XT_MATCH_U32
+    -e CONFIG_NETFILTER_XT_MATCH_NFACCT
+    -e CONFIG_NETFILTER_XT_MATCH_PHYSDEV
+)
+scripts/config --file "$OUT_DIR/.config" "${NETHUNTER_ARGS[@]}"
+
 # KASAN runtime disable (can't compile out — ABI symbol kasan_flag_enabled)
 # Also override bootloader's panic_on_rcu_stall — SUSFS hooks can trigger
 # scheduling-while-atomic BUGs that cascade into false RCU stalls.
@@ -638,7 +739,9 @@ fi
 # ==========================================
 # Package
 # ==========================================
+find "$KERNEL_DIR" -maxdepth 1 -type f -name "ArifGans-*.zip" -exec rm -v {} \;
 find "$KERNEL_DIR" -maxdepth 1 -type f -name "Kono-Ha-*.zip" -exec rm -v {} \;
+rm -rf "$KERNEL_DIR/ArifGans-Release"
 rm -rf "$KERNEL_DIR/Kono-Ha-Release"
 
 TIME=$(date "+%Y%m%d-%H%M%S")
@@ -674,11 +777,14 @@ fi
 HZ_LABEL=""
 case "$HZ" in 100) HZ_LABEL="-powersave" ;; 500) HZ_LABEL="-performance" ;; 1000) HZ_LABEL="-ultra-performance" ;; *) HZ_LABEL="-balance" ;; esac
 
-ZIP_NAME="Kono-Ha-${VERSION}${ZIP_SUFFIX}${HZ_LABEL}-$TIME.zip"
+ZIP_NAME="ArifGans-${VERSION}${ZIP_SUFFIX}${HZ_LABEL}-$TIME.zip"
 cd "$TEMP_DIR" && zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder > /dev/null && cd ..
 rm -rf "$TEMP_DIR"
 
 # Copy to release dir for CI
+mkdir -p "$KERNEL_DIR/ArifGans-Release"
+cp "$KERNEL_DIR/$ZIP_NAME" "$KERNEL_DIR/ArifGans-Release/"
+# Backwards-compat alias for any downstream tooling still expecting Kono-Ha-Release
 mkdir -p "$KERNEL_DIR/Kono-Ha-Release"
 cp "$KERNEL_DIR/$ZIP_NAME" "$KERNEL_DIR/Kono-Ha-Release/"
 
